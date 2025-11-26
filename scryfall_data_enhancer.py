@@ -4,6 +4,8 @@ import time
 import os
 import click
 import csv
+from collections import defaultdict
+from typing import Dict
 
 SCRYFALL_API_USER_AGENT = "MyDeckListProcessor/1.0"
 
@@ -13,127 +15,127 @@ COLOR_IDENTITIES = {
         'legal_color_identities': ['']
     },
     'white': {
-        'color_identity': 'W',
+        'color_identity': 'w',
         'legal_color_identities': ['', 'W']
     },
     'blue': {
-        'color_identity': 'U',
+        'color_identity': 'u',
         'legal_color_identities': ['', 'U']
     },
     'black': {
-        'color_identity': 'B',
+        'color_identity': 'b',
         'legal_color_identities': ['', 'B']
     },
     'red': {
-        'color_identity': 'R',
+        'color_identity': 'r',
         'legal_color_identities': ['', 'R']
     },
     'green': {
-        'color_identity': 'G',
+        'color_identity': 'g',
         'legal_color_identities': ['', 'G']
     },
     'azorius': {  # White-Blue
-        'color_identity': 'WU',
+        'color_identity': 'uw',
         'legal_color_identities': ['', 'W', 'U', 'WU']
     },
     'boros': {  # White-Red
-        'color_identity': 'WR',
+        'color_identity': 'rw',
         'legal_color_identities': ['', 'W', 'R', 'WR']
     },
     'orzhov': {  # White-Black
-        'color_identity': 'WB',
+        'color_identity': 'bw',
         'legal_color_identities': ['', 'W', 'B', 'WB']
     },
     'selesnya': {  # White-Green
-        'color_identity': 'WG',
+        'color_identity': 'gw',
         'legal_color_identities': ['', 'W', 'G', 'WG']
     },
     'dimir': {  # Blue-Black
-        'color_identity': 'UB',
+        'color_identity': 'bu',
         'legal_color_identities': ['', 'U', 'B', 'UB']
     },
     'izzet': {  # Blue-Red
-        'color_identity': 'UR',
+        'color_identity': 'ru',
         'legal_color_identities': ['', 'U', 'R', 'UR']
     },
     'simic': {  # Blue-Green
-        'color_identity': 'UG',
+        'color_identity': 'gu',
         'legal_color_identities': ['', 'U', 'G', 'UG']
     },
     'rakdos': {  # Black-Red
-        'color_identity': 'BR',
+        'color_identity': 'br',
         'legal_color_identities': ['', 'B', 'R', 'BR']
     },
     'golgari': {  # Black-Green
-        'color_identity': 'BG',
+        'color_identity': 'bg',
         'legal_color_identities': ['', 'B', 'G', 'BG']
     },
     'gruul': {  # Red-Green
-        'color_identity': 'RG',
+        'color_identity': 'gr',
         'legal_color_identities': ['', 'R', 'G', 'RG']
     },
     'wub': {  # White-Blue-Black
-        'color_identity': 'WUB',
+        'color_identity': 'buw',
         'legal_color_identities': ['', 'W', 'U', 'B', 'WU', 'WB', 'UB', 'WUB']
     },
     'wur': {  # White-Blue-Red
-        'color_identity': 'WUR',
+        'color_identity': 'ruw',
         'legal_color_identities': ['', 'W', 'U', 'R', 'WU', 'WR', 'UR', 'WUR']
     },
     'wug': {  # White-Blue-Green
-        'color_identity': 'WUG',
+        'color_identity': 'guw',
         'legal_color_identities': ['', 'W', 'U', 'G', 'WU', 'WG', 'UG', 'WUG']
     },
     'wbr': {  # White-Black-Red
-        'color_identity': 'WBR',
+        'color_identity': 'brw',
         'legal_color_identities': ['', 'W', 'B', 'R', 'WB', 'WR', 'BR', 'WBR']
     },
     'wbg': {  # White-Black-Green
-        'color_identity': 'WBG',
+        'color_identity': 'bgw',
         'legal_color_identities': ['', 'W', 'B', 'G', 'WB', 'WG', 'BG', 'WBG']
     },
     'wrg': {  # White-Red-Green
-        'color_identity': 'WRG',
+        'color_identity': 'grw',
         'legal_color_identities': ['', 'W', 'R', 'G', 'WR', 'WG', 'RG', 'WRG']
     },
     'ubr': {  # Blue-Black-Red
-        'color_identity': 'UBR',
+        'color_identity': 'bru',
         'legal_color_identities': ['', 'U', 'B', 'R', 'UB', 'UR', 'BR', 'UBR']
     },
     'ubg': {  # Blue-Black-Green
-        'color_identity': 'UBG',
+        'color_identity': 'bgu',
         'legal_color_identities': ['', 'U', 'B', 'G', 'UB', 'UG', 'BG', 'UBG']
     },
     'urg': {  # Blue-Red-Green
-        'color_identity': 'URG',
+        'color_identity': 'gru',
         'legal_color_identities': ['', 'U', 'R', 'G', 'UR', 'UG', 'RG', 'URG']
     },
     'brg': {  # Black-Red-Green
-        'color_identity': 'BRG',
+        'color_identity': 'bgr',
         'legal_color_identities': ['', 'B', 'R', 'G', 'BR', 'BG', 'RG', 'BRG']
     },
     'wubr': {  # White-Blue-Black-Red
-        'color_identity': 'WUBR',
+        'color_identity': 'bruw',
         'legal_color_identities': ['', 'W', 'U', 'B', 'R', 'WU', 'WB', 'WR', 'UB', 'UR', 'BR', 'WUB', 'WUR', 'WBR', 'UBR', 'WUBR']
     },
     'wubg': {  # White-Blue-Black-Green
-        'color_identity': 'WUBG',
+        'color_identity': 'bguw',
         'legal_color_identities': ['', 'W', 'U', 'B', 'G', 'WU', 'WB', 'WG', 'UB', 'UG', 'BG', 'WUB', 'WUG', 'WBG', 'UBG', 'WUBG']
     },
     'wurg': {  # White-Blue-Red-Green
-        'color_identity': 'WURG',
+        'color_identity': 'gruw',
         'legal_color_identities': ['', 'W', 'U', 'R', 'G', 'WU', 'WR', 'WG', 'UR', 'UG', 'RG', 'WUR', 'WUG', 'WRG', 'URG', 'WURG']
     },
     'wbrg': {  # White-Black-Red-Green
-        'color_identity': 'WBRG',
+        'color_identity': 'bgrw',
         'legal_color_identities': ['', 'W', 'B', 'R', 'G', 'WB', 'WR', 'WG', 'BR', 'BG', 'RG', 'WBR', 'WBG', 'WRG', 'BRG', 'WBRG']
     },
     'ubrg': {  # Blue-Black-Red-Green
-        'color_identity': 'UBRG',
+        'color_identity': 'bgru',
         'legal_color_identities': ['', 'U', 'B', 'R', 'G', 'UB', 'UR', 'UG', 'BR', 'BG', 'RG', 'UBR', 'UBG', 'URG', 'BRG', 'UBRG']
     },
     'wubrg': {  # White-Blue-Black-Red-Green
-        'color_identity': 'WUBRG',
+        'color_identity': 'bgruw',
         'legal_color_identities': ['', 'W', 'U', 'B', 'R', 'G', 'WU', 'WB', 'WR', 'WG', 'UB', 'UR', 'UG', 'BR', 'BG', 'RG', 'WUB', 'WUR', 'WBR', 'WBG', 'WRG', 'UBR', 'UBG', 'URG', 'BRG', 'WUBR', 'WUBG', 'WURG', 'WBRG', 'UBRG', 'WUBRG']
     }
 }
@@ -375,6 +377,192 @@ def create_all_color_identity_csvs(commander_legal_file) -> list[str]:
             created_files.append(output_file)
     return created_files
 
+def generate_commander_combinations(input_file: str) -> str:
+    """
+    Generate all possible commander combinations from a CSV file of Magic: the Gathering cards.
+    
+    Args:
+        input_file: Path to the input CSV file containing card data
+        
+    Returns:
+        Path to the output CSV file containing all valid commander combinations
+    """
+    # Read the input CSV and process cards
+    cards = []
+    with open(input_file, 'r', encoding='utf-8') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            cards.append(row)
+    
+    # Create a dictionary for quick lookup by name
+    card_by_name = {card['name']: card for card in cards}
+    
+    # Categorize cards
+    legendary_creatures = []
+    partner_cards = []  # Cards with "Partner" (not "Partner With")
+    partner_with_cards = defaultdict(list)  # Maps card name to list of cards it can partner with
+    friends_forever_cards = defaultdict(list)  # Maps card name to list of cards it can be friends with
+    planeswalkers = []
+    backgrounds = []
+    legendary_artifacts = []
+    
+    for card in cards:
+        name = card['name']
+        type_line = card.get('type_line', '').lower()
+        oracle_text = card.get('oracle_text', '').lower()
+        color_identity = card.get('color_identity', '').lower()
+        
+        # Check if legendary creature
+        if 'legendary' in type_line and 'creature' in type_line:
+            # Check for special keywords
+            if 'partner with ' in oracle_text:
+                # Extract the partner name from "Partner With: <Card Name>"
+                partner_name = oracle_text.split('partner with ')[1].split('.')[0].strip()
+                partner_with_cards[name].append(partner_name)
+                partner_with_cards[partner_name].append(name)
+            elif 'partner' in oracle_text and 'partner with' not in oracle_text:
+                partner_cards.append(name)
+            elif 'friends forever' in oracle_text:
+                # Extract friends names (assuming format "Friends forever with <Card Name>")
+                friends_text = oracle_text.split('friends forever with ')[1].split('.')[0].strip()
+                friend_names = [n.strip() for n in friends_text.split(' and ')]
+                for friend in friend_names:
+                    if friend != name:  # Avoid self-reference
+                        friends_forever_cards[name].append(friend)
+                        friends_forever_cards[friend].append(name)
+            legendary_creatures.append(name)
+        
+        # Check for planeswalkers that can be commanders
+        elif 'planeswalker' in type_line and 'can be your commander' in oracle_text:
+            planeswalkers.append(name)
+        
+        # Check for backgrounds
+        elif 'legendary' in type_line and 'enchantment' in type_line and 'background' in type_line:
+            backgrounds.append(name)
+        
+        # Check for legendary artifacts with power and toughness
+        elif 'legendary' in type_line and 'artifact' in type_line:
+            power = card.get('power', '')
+            toughness = card.get('toughness', '')
+            if power and toughness:
+                legendary_artifacts.append(name)
+    
+    # Generate all possible commander combinations
+    combinations = []
+    
+    # 1. Single legendary creatures
+    for creature in legendary_creatures:
+        combinations.append((creature, '', color_identity))
+    
+    # 2. Partner cards (any two different partner cards)
+    for i, card1 in enumerate(partner_cards):
+        for card2 in partner_cards[i+1:]:
+            # Get combined color identity
+            color1 = card_by_name[card1].get('color_identity', '').lower()
+            color2 = card_by_name[card2].get('color_identity', '').lower()
+            combined_color = combine_color_identities(color1, color2)
+            combinations.append((card1, card2, combined_color))
+    
+    # 3. Partner With pairs (only specific pairs)
+    for card1, partners in partner_with_cards.items():
+        for partner in partners:
+            if card1 < partner:  # Avoid duplicates (A,B) and (B,A)
+                color1 = card_by_name[card1].get('color_identity', '').lower()
+                color2 = card_by_name[partner].get('color_identity', '').lower()
+                combined_color = combine_color_identities(color1, color2)
+                combinations.append((card1, partner, combined_color))
+    
+    # 4. Friends Forever pairs (only specific pairs)
+    for card1, friends in friends_forever_cards.items():
+        for friend in friends:
+            if card1 < friend:  # Avoid duplicates
+                color1 = card_by_name[card1].get('color_identity', '').lower()
+                color2 = card_by_name[friend].get('color_identity', '').lower()
+                combined_color = combine_color_identities(color1, color2)
+                combinations.append((card1, friend, combined_color))
+    
+    # 5. Planeswalkers
+    for walker in planeswalkers:
+        combinations.append(walker, '', card_by_name[walker].get('color_identity', '').lower())
+    
+    # 6. Background combinations
+    for creature in legendary_creatures:
+        creature_card = card_by_name[creature]
+        creature_text = creature_card.get('oracle_text', '').lower()
+        if 'choose a background' in creature_text:
+            for background in backgrounds:
+                bg_card = card_by_name[background]
+                color1 = creature_card.get('color_identity', '').lower()
+                color2 = bg_card.get('color_identity', '').lower()
+                combined_color = combine_color_identities(color1, color2)
+                combinations.append((creature, background, combined_color))
+    
+    # 7. Legendary Artifacts
+    for artifact in legendary_artifacts:
+        combinations.append((artifact, '', card_by_name[artifact].get('color_identity', '').lower()))
+    
+    # Write to output CSV
+    output_path = os.path.splitext(input_file)[0] + '_commander_combinations.csv'
+    with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['commander_1', 'commander_2', 'combined_color_identity']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for cmd1, cmd2, color in combinations:
+            writer.writerow({
+                'commander_1': cmd1,
+                'commander_2': cmd2,
+                'combined_color_identity': color
+            })
+    
+    return output_path
+
+def get_color_identity(card: Dict[str, str]) -> str:
+    """
+    Extract the color identity from a card's attributes.
+    
+    Args:
+        card: Dictionary containing card attributes
+        
+    Returns:
+        String representing the color identity (e.g., "WUB")
+    """
+    # First, check if color identity is explicitly provided
+    if 'color_identity' in card:
+        return ''.join(sorted(card['color_identity'].replace('{', '').replace('}', '')))
+    
+    # Otherwise, derive from colors and mana cost
+    colors = card.get('colors', '')
+    mana_cost = card.get('mana_cost', '')
+    
+    # Get colors from colors field
+    card_colors = ''.join(colors.split()) if colors else ''
+    
+    # Get colors from mana cost
+    mana_colors = []
+    if mana_cost:
+        for c in ['W', 'U', 'B', 'R', 'G']:
+            if c in mana_cost:
+                mana_colors.append(c)
+    
+    # Combine and deduplicate
+    all_colors = ''.join(sorted(set(card_colors + mana_colors)))
+    return all_colors if all_colors else 'C'  # Colorless
+
+def combine_color_identities(color1: str, color2: str) -> str:
+    """
+    Combine two color identities into one.
+    
+    Args:
+        color1: First color identity string
+        color2: Second color identity string
+        
+    Returns:
+        Combined color identity string
+    """
+    combined = set(color1 + color2)
+    return ''.join(sorted(combined)) if combined else 'C'
+
 @click.command()
 @click.option('--collection-file', '-f', required=True, help='Path to the input CSV file with Scryfall IDs.')
 def cli(collection_file):
@@ -385,6 +573,7 @@ def cli(collection_file):
     enhanced_file = enhance_card_data(reduced_file)
     commander_legal_file = filter_commander_legal(enhanced_file)
     create_all_color_identity_csvs(commander_legal_file)
+    generate_commander_combinations(commander_legal_file)
 
 if __name__ == "__main__":
     cli()

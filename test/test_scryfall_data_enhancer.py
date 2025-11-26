@@ -45,5 +45,5 @@ def _filter_by_color_identity(color_identity, expected_file):
 
 def test_filter_by_color_identity():
     _filter_by_color_identity('colorless', 'test-collection-reduced-enhanced-commander-legal--expected.csv')
-    _filter_by_color_identity('golgari', 'test-collection-reduced-enhanced-commander-legal-BG-expected.csv')
-    _filter_by_color_identity('wubrg', 'test-collection-reduced-enhanced-commander-legal-WUBRG-expected.csv')
+    _filter_by_color_identity('golgari', 'test-collection-reduced-enhanced-commander-legal-bg-expected.csv')
+    _filter_by_color_identity('wubrg', 'test-collection-reduced-enhanced-commander-legal-bgruw-expected.csv')
