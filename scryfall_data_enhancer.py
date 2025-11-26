@@ -247,7 +247,7 @@ def enhance_card_data(reduced_file) -> str:
                 type_line = details.get('type_line', '')
                 power = details.get('power', '')
                 toughness = details.get('toughness', '')
-                oracle_text = details.get('oracle_text', '').replace('\n', ' ')
+                oracle_text = details.get('oracle_text', '').replace('\n', '|')
                 writer.writerow([name, card_id, commander_legal, color_identity, mana_cost, cmc, type_line, power, toughness, oracle_text])
             else:
                 print(f" -> Could not fetch details for {card_id}. Writing blank fields.")
@@ -401,7 +401,7 @@ def generate_commander_combinations(input_file: str) -> str:
     legendary_creatures = []
     partner_cards = []  # Cards with "Partner" (not "Partner With")
     partner_with_cards = defaultdict(list)  # Maps card name to list of cards it can partner with
-    friends_forever_cards = defaultdict(list)  # Maps card name to list of cards it can be friends with
+    friends_forever_cards = [] # cards with "Friends Forever"
     planeswalkers = []
     backgrounds = []
     legendary_artifacts = []
@@ -417,19 +417,13 @@ def generate_commander_combinations(input_file: str) -> str:
             # Check for special keywords
             if 'partner with ' in oracle_text:
                 # Extract the partner name from "Partner With: <Card Name>"
-                partner_name = oracle_text.split('partner with ')[1].split('.')[0].strip()
+                partner_name = oracle_text.split('partner with ')[1].split('|')[0].strip()
                 partner_with_cards[name].append(partner_name)
                 partner_with_cards[partner_name].append(name)
             elif 'partner' in oracle_text and 'partner with' not in oracle_text:
                 partner_cards.append(name)
             elif 'friends forever' in oracle_text:
-                # Extract friends names (assuming format "Friends forever with <Card Name>")
-                friends_text = oracle_text.split('friends forever with ')[1].split('.')[0].strip()
-                friend_names = [n.strip() for n in friends_text.split(' and ')]
-                for friend in friend_names:
-                    if friend != name:  # Avoid self-reference
-                        friends_forever_cards[name].append(friend)
-                        friends_forever_cards[friend].append(name)
+                friends_forever_cards.append(name)
             legendary_creatures.append(name)
         
         # Check for planeswalkers that can be commanders
@@ -471,15 +465,15 @@ def generate_commander_combinations(input_file: str) -> str:
                 color2 = card_by_name[partner].get('color_identity', '').lower()
                 combined_color = combine_color_identities(color1, color2)
                 combinations.append((card1, partner, combined_color))
-    
-    # 4. Friends Forever pairs (only specific pairs)
-    for card1, friends in friends_forever_cards.items():
-        for friend in friends:
-            if card1 < friend:  # Avoid duplicates
-                color1 = card_by_name[card1].get('color_identity', '').lower()
-                color2 = card_by_name[friend].get('color_identity', '').lower()
-                combined_color = combine_color_identities(color1, color2)
-                combinations.append((card1, friend, combined_color))
+
+    # 4. Friends Forever cards (any two different Friends Forever cards)
+    for i, card1 in enumerate(friends_forever_cards):
+        for card2 in friends_forever_cards[i+1:]:
+            # Get combined color identity
+            color1 = card_by_name[card1].get('color_identity', '').lower()
+            color2 = card_by_name[card2].get('color_identity', '').lower()
+            combined_color = combine_color_identities(color1, color2)
+            combinations.append((card1, card2, combined_color))
     
     # 5. Planeswalkers
     for walker in planeswalkers:
