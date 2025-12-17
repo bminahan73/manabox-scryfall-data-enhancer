@@ -1,3 +1,6 @@
 requests
 click
 pyinstaller
+langchain
+langchain-openai
+pandas

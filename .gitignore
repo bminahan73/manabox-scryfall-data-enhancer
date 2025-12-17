@@ -9,3 +9,4 @@ scratch/
 test/test_data/*.csv
 !test/test_data/test-collection.csv
 !test/test_data/*-expected.csv
+.env
