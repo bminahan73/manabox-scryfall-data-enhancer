@@ -5,80 +5,58 @@ from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 
 class CardSelection(BaseModel):
-    """Model for the output structure"""
     selected_cards: List[str] = Field(
         description="card names of the selected cards"
     )
 
 class MagicCardSelector:
     def __init__(self, model_name: str = "glm-4.5-flash", temperature: float = 0.1):
-        """
-        Initialize the Magic: The Gathering card selector.
-        
-        Args:
-            model_name: Name of the OpenAI model to use
-            temperature: Temperature for response randomness
-        """
         self.llm = ChatOpenAI(
             model=model_name,
             temperature=temperature,
             model_kwargs={"response_format": {"type": "json_object"}},
             openai_api_base="https://open.bigmodel.cn/api/paas/v4/"
         )
-        
-        # Use LangChain's JsonOutputParser for structured output
         self.parser = JsonOutputParser(pydantic_object=CardSelection)
-        
         self.prompt_template = PromptTemplate(
             input_variables=["cards", "deck_concept"],
-            template="""You are a Magic: The Gathering deck building expert. You will be given a deck concept and a list of 10 Magic: The Gathering cards.
-For each card, you have all the relevant information including:
-- Card name
-- Mana cost
-- Card type
-- Card text/rules text
-- Power and toughness (for creatures)
-Your task is to analyze the provided cards and select up to 3 cards that would be most relevant and synergistic with the given deck concept. You do not _have_ to pick any cards. Results with 0, 1 or 2 selected cards are also fine. Make sure to still follow the formatting instructions in these cases. 
-{format_instructions}
-Deck Concept: {deck_concept}
-Cards:
-{cards}"""
+            template="""You are a Magic: The Gathering deck building expert. You will be given a deck concept and a list of Magic: The Gathering cards.
+            For each card, you have all the relevant information including:
+            - Card name
+            - Mana cost
+            - Card type
+            - Card text/rules text
+            - Power and toughness (for creatures)
+            Your task is to select a few of the cards that would be the _most_ relevant and synergistic with the given deck concept. You do not _have_ to select any cards. Results with 0 selected cards are also fine. Make sure to still follow the formatting instructions in this case. 
+            {format_instructions}
+            Deck Concept: {deck_concept}
+            Cards:
+            {cards}"""
         )
-        
-        # Create the chain using the newer approach
         self.chain = self.prompt_template | self.llm | self.parser
-    def select_cards(self, cards: List[Dict], deck_concept: str) -> List[Dict]:
-        """
-        Select cards based on the deck concept.
-        
-        Args:
-            cards: List of card dictionaries with card details
-            deck_concept: Description of the deck strategy
-            
-        Returns:
-            List of selected cards with relevance information
-        """
-        # Format the cards for the prompt
+
+    def select_cards(self, cards: List[Dict], deck_concept: str) -> CardSelection:
         formatted_cards = "\n".join(
             f"- {card.get('name', 'Unknown')}: {card.get('mana_cost', '')} - {card.get('type_line', '')}\n" +
             f"  Text: {card.get('oracle_text', '')}\n" +
             f"  {card.get('power', '')}/{card.get('toughness', '') if 'power' in card else ''}\n"
             for card in cards
         )
-        
-        # Get the response from the chain
-        response = self.chain.invoke({
-            "cards": formatted_cards,
-            "deck_concept": deck_concept,
-            "format_instructions": self.parser.get_format_instructions()
-        })
-        
-        # Return the selected cards
-        return response.get("selected_cards", [])
-# Example usage
+        retries = 10
+        while retries > 0:
+            try:
+                response = self.chain.invoke({
+                    "cards": formatted_cards,
+                    "deck_concept": deck_concept,
+                    "format_instructions": self.parser.get_format_instructions()
+                })
+                return response
+            except Exception as e:
+                retries -= 1
+                print(f"Error occurred: {e}. retrying...")
+        raise Exception("Failed to get a valid response after multiple retries")
+
 if __name__ == "__main__":
-    # Sample card data (this would typically come from an API or database)
-    # Sample Magic: The Gathering cards data
     sample_cards = [
         {
             "name": "Lightning Bolt",
@@ -146,16 +124,7 @@ if __name__ == "__main__":
         }
     ]
     
-    # Initialize the selector
     selector = MagicCardSelector()
-    
-    # Test with a sample deck concept
     deck_concept = "I'm building a red burn deck focused on direct damage to the opponent"
-    
-    # Get card recommendations
     selected_cards = selector.select_cards(sample_cards, deck_concept)
-    
-    # Print the results
-    print("Recommended cards for your deck:")
-    for card in selected_cards:
-        print(card)
+    print(selected_cards)

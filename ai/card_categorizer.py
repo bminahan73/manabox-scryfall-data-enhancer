@@ -4,49 +4,65 @@ from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 
-class CardSelection(BaseModel):
-    selected_cards: List[str] = Field(
-        description="card names of the selected cards"
+class CardCategory(BaseModel):
+    category: str = Field(
+        description="label/category of these cards"
+    )
+    cards: List[str] = Field(
+        description="list of card names"
     )
 
-class MagicCardSelectorLight:
+class CardCategories(BaseModel):
+    categories: List[CardCategory] = Field(
+        description="organized list of cards into different categories"
+    )
+
+class MagicCardSelector:
     def __init__(self, model_name: str = "glm-4.5-flash", temperature: float = 0.1):
         self.llm = ChatOpenAI(
             model=model_name,
             temperature=temperature,
             model_kwargs={"response_format": {"type": "json_object"}},
-            openai_api_base="https://open.bigmodel.cn/api/paas/v4/"
+            openai_api_base="https://open.bigmodel.cn/api/paas/v4/",
+            max_completion_tokens=2000
         )
-        self.parser = JsonOutputParser(pydantic_object=CardSelection)
+
+        self.parser = JsonOutputParser(pydantic_object=CardCategories)
+
         self.prompt_template = PromptTemplate(
             input_variables=["cards", "deck_concept"],
-            template="""You are a Magic: The Gathering deck building expert. You will be given a deck concept and a list of Magic: The Gathering cards.
-            Your task is to select a few of the cards that would be the _most_ relevant and synergistic with the given deck concept. You do not _have_ to select any cards. Results with 0 selected cards are also fine. Make sure to still follow the formatting instructions in this case. 
+            template="""You are a Magic: The Gathering commander deck building expert.
+            You will be given a deck concept and a list of Magic: The Gathering cards that have been filtered from a broader collection,
+            but the card list is not as focused as it should be towards the deck concept.
+            The cards you will see will also not be the full list of filtered cards, but rather a handful of what remains.
+            To aid in completing a deck list, your job is to organize these cards into categories that would be relevant to the deck concept.
+            The categories for this deck are:
+            {categories}
+            A card can be in more than one category. If it fulfills more than one job, it should be placed in all relevant categories.
+            If a card does not fit into a category which is relevant to the deck concept, put it in a special category called "CUT" to signify I should cut the card from the deck.
             {format_instructions}
             Deck Concept: {deck_concept}
             Cards:
             {cards}"""
         )
+        
         self.chain = self.prompt_template | self.llm | self.parser
 
-    def select_cards(self, cards: List[Dict], deck_concept: str) -> CardSelection:
+    def categorize_cards(self, cards: List[Dict], deck_concept: str, categories: list[str]) -> CardCategories:
         formatted_cards = "\n".join(
-            f"- {card.get('name', 'Unknown')}"
+            f"- {card.get('name', 'Unknown')}: {card.get('mana_cost', '')} - {card.get('type_line', '')}\n" +
+            f"  Text: {card.get('oracle_text', '')}\n" +
+            f"  {card.get('power', '')}/{card.get('toughness', '') if 'power' in card else ''}\n"
             for card in cards
         )
-        retries = 10
-        while retries > 0:
-            try:
-                response = self.chain.invoke({
-                    "cards": formatted_cards,
-                    "deck_concept": deck_concept,
-                    "format_instructions": self.parser.get_format_instructions()
-                })
-                return response
-            except Exception as e:
-                retries -= 1
-                print(f"Error occurred: {e}. retrying...")
-        raise Exception("Failed to get a valid response after multiple retries")
+        formatted_categories = "\n".join(f"- {category}" for category in categories)
+        response = self.chain.invoke({
+            "cards": formatted_cards,
+            "deck_concept": deck_concept,
+            "categories": formatted_categories,
+            "format_instructions": self.parser.get_format_instructions()
+        })
+        return response
 
 if __name__ == "__main__":
     sample_cards = [
@@ -115,7 +131,7 @@ if __name__ == "__main__":
             "oracle_text": "Exile target creature. Its controller gains life equal to its power."
         }
     ]
-    selector = MagicCardSelectorLight()
+    selector = MagicCardSelector()
     deck_concept = "I'm building a red burn deck focused on direct damage to the opponent"
-    selected_cards = selector.select_cards(sample_cards, deck_concept)
-    print(selected_cards)
+    categories = selector.categorize_cards(sample_cards, deck_concept, ["Direct Damage", "Removal", "Ramp"])
+    print(categories)

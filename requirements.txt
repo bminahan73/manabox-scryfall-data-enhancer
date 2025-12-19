@@ -4,3 +4,4 @@ pyinstaller
 langchain
 langchain-openai
 pandas
+ijson

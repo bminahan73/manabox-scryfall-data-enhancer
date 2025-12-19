@@ -1,13 +1,11 @@
 import csv
-import requests
-import time
 import os
 import click
 import csv
 from collections import defaultdict
 from typing import Dict
-
-SCRYFALL_API_USER_AGENT = "MyDeckListProcessor/1.0"
+import json
+import sqlite3
 
 COLOR_IDENTITIES = {
     'colorless': {
@@ -183,61 +181,39 @@ def reduce_collection_csv(input_file) -> str:
 
     return output_file
 
-def get_card_details_by_id(card_id) -> dict|None:
-    """
-    Fetches card details from Scryfall API using the card ID.
-    Args:
-        card_id (str): Scryfall card ID
-    Returns:
-        dict|None: Card details as returned by Scryfall API. If card is not found, returns None.
-    """
-    url = f"https://api.scryfall.com/cards/{card_id}"
+def get_card_data(id: str, db_path: str) -> dict:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     
     try:
-        response = requests.get(
-            url,
-            headers={
-                "Accept": "application/json",
-                "User-Agent": SCRYFALL_API_USER_AGENT
-            }
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError as http_err:
-        print(f"HTTP error occurred for ID '{card_id}': {http_err}")
-    except requests.exceptions.RequestException as req_err:
-        print(f"Request error occurred for ID '{card_id}': {req_err}")
-    except Exception as e:
-        print(f"An unexpected error occurred for ID '{card_id}': {e}")
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, value FROM json_data WHERE id = ?', (id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        record_dict = json.loads(row['value'])
+    finally:
+        conn.close()
+    return record_dict
 
-    return None
-
-def enhance_card_data(reduced_file) -> str:
-    """
-    Enhances the reduced CSV file with additional card details from Scryfall API.
-    Args:
-        reduced_file (str): Path to the reduced CSV file
-    Returns:
-        str: Path to the enhanced CSV file
-    """
+def enhance_card_data(reduced_file, card_db) -> str:
     print(f"Reading card IDs from '{reduced_file}'...")
     with open(reduced_file, 'r', newline='', encoding='utf-8') as infile:
         reader = csv.reader(infile)
         card_ids = [row[1] for row in reader if row and row[1] != "scryfall_id"]
     print(f"Found {len(card_ids)} card IDs to process.")
-    sample_details = get_card_details_by_id(card_ids[0])
-    if not sample_details:
-        print("Could not fetch details for the first card to determine headers. Exiting.")
-        return
+
     final_headers = ['name', 'scryfall_id', 'commander_legal', 'color_identity', 'mana_cost', 'cmc', 'type_line', 'power', 'toughness', 'oracle_text']
-    output_file_path = reduced_file.replace('.csv', '-enhanced.csv') 
+    output_file_path = reduced_file.replace('.csv', '-enhanced.csv')
     print(f"Enhancing data and saving to '{output_file_path}'...")
+
     with open(output_file_path, 'w', newline='', encoding='utf-8') as outfile:
         writer = csv.writer(outfile)
         writer.writerow(final_headers)
+
         for i, card_id in enumerate(card_ids):
             print(f"Processing card {i+1}/{len(card_ids)}: {card_id}...")
-            details = get_card_details_by_id(card_id)
+            details = get_card_data(id=card_id, db_path=card_db)
             if details:
                 name = details.get('name', '')
                 commander_legal = details.get('legalities', {}).get('commander', '') == 'legal'
@@ -250,9 +226,8 @@ def enhance_card_data(reduced_file) -> str:
                 oracle_text = details.get('oracle_text', '').replace('\n', '|')
                 writer.writerow([name, card_id, commander_legal, color_identity, mana_cost, cmc, type_line, power, toughness, oracle_text])
             else:
-                print(f" -> Could not fetch details for {card_id}. Writing blank fields.")
-                writer.writerow([card_id, '', '', '', ''])
-            time.sleep(0.3) # Adjust delay as needed based on Scryfall's rate limits
+                print(f" -> Could not fetch details for {card_id}. Skipping.")
+
     print("\nProcessing complete!")
     print(f"Enhanced data saved to '{output_file_path}'")
     return output_file_path
@@ -559,12 +534,13 @@ def combine_color_identities(color1: str, color2: str) -> str:
 
 @click.command()
 @click.option('--collection-file', '-f', required=True, help='Path to the input CSV file with Scryfall IDs.')
-def cli(collection_file):
+@click.option('--card-db', '--db', default='cards.db', help='Path to the SQLite database containing card data.')
+def cli(collection_file, card_db):
     """
     Command-line interface to enhance card data from a collection CSV file.
     """
     reduced_file = reduce_collection_csv(collection_file)
-    enhanced_file = enhance_card_data(reduced_file)
+    enhanced_file = enhance_card_data(reduced_file, card_db)
     commander_legal_file = filter_commander_legal(enhanced_file)
     create_all_color_identity_csvs(commander_legal_file)
     generate_commander_combinations(commander_legal_file)
